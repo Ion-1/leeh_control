@@ -1,0 +1,7 @@
+[project]
+name = "leeh-control"
+version = "0.1.0"
+description = "Control software for the Low-energy Electron Holography microscope at the PSI"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = []
