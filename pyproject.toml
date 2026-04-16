@@ -4,4 +4,20 @@ version = "0.1.0"
 description = "Control software for the Low-energy Electron Holography microscope at the PSI"
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "pylablib-lightweight[devio]>=1.4.3",
+    "pyserial>=3.5",
+    "pyside6>=6.11.0",
+    "rust-enum",
+    "tomlkit>=0.14.0",
+]
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.19.0",
+    "ruff>=0.15.7",
+    "ty>=0.0.24",
+]
+
+[tool.uv.sources]
+rust-enum = { git = "https://github.com/Ion-1/rust_enum" }

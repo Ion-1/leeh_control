@@ -1,0 +1,1 @@
+uv run pyinstaller --onefile --console --hide-console=hide-late --name=leeh_control_interface .\__main__.py
