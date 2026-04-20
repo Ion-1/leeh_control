@@ -149,8 +149,10 @@ class ANM300Widget(QFrame):
         self.controller = controller
         self.config_provider = config_provider
         self.config = config_provider.axis_config(serial)
+        self.general_config = config_provider.general_config()
 
         self.config.signals.name.connect(self._refresh_name)  # ty:ignore[unresolved-attribute]
+        self.general_config.signals.advanced_mode.connect(self.advanced_mode_toggled)  # ty:ignore[unresolved-attribute]
 
         layout = QVBoxLayout(self)
 
@@ -183,14 +185,14 @@ class ANM300Widget(QFrame):
         self.mode_group.addButton(self.off_button)
         layout.addWidget(self.off_button)
 
-        self.stp_plus_button = QRadioButton("Step +")
+        self.stp_plus_button = QRadioButton("Offset + Step")
         self.stp_plus_button.clicked.connect(
             self.create_set_mode_slot(self.Modes.Off_plus_step)
         )
         self.mode_group.addButton(self.stp_plus_button)
         layout.addWidget(self.stp_plus_button)
 
-        self.stp_minus_button = QRadioButton("Step -")
+        self.stp_minus_button = QRadioButton("Offset - Step")
         self.stp_minus_button.clicked.connect(
             self.create_set_mode_slot(self.Modes.Off_minus_step)
         )
@@ -287,7 +289,29 @@ class ANM300Widget(QFrame):
         self.capacitance_widget = CapacitanceWidget(aid, controller)
         layout.addWidget(self.capacitance_widget)
 
+        self._set_advanced_mode(self.general_config.advanced_mode)
         self.refresh()
+
+    def _set_advanced_mode(self, advanced_mode: bool):
+        self.advanced_mode = advanced_mode
+        self.inp_button.setVisible(advanced_mode)
+        self.stp_plus_button.setVisible(advanced_mode)
+        self.stp_minus_button.setVisible(advanced_mode)
+
+        if not advanced_mode:
+            self.step_button.setText("Coarse Stepping")
+            self.off_button.setText("Fine Positioning Offset")
+            # self.stp_plus_button.setText("Fine Positioning Offset plus Coarse Stepping")
+            # self.stp_minus_button.setText("Fine Positioning Offset minus Coarse Stepping")
+        else:
+            self.step_button.setText("Stepping")
+            self.off_button.setText("Offset")
+            # self.stp_plus_button.setText("Offset plus Step")
+            # self.stp_minus_button.setText("Offset minus Step")
+
+    @Slot()
+    def advanced_mode_toggled(self):
+        self._set_advanced_mode(self.general_config.advanced_mode)
 
     def _label_text(self) -> str:
         if (name := self.config.name) is not None:
