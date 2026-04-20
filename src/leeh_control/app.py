@@ -1,4 +1,3 @@
-from hashlib import new
 import logging
 
 from functools import cache
@@ -12,7 +11,6 @@ from tomlkit import dumps
 from .config import parse_config, AxisConfig, difference
 from .state import AppState
 from .ui.main_window import MainWindow
-
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +43,18 @@ class App(QApplication):
         diff = difference(old_config.unwrap(), new_config.unwrap())
         logger.info(f"Config diff: {diff}")
 
+        if not any(diff):
+            return
+
+        self.state.config.clear()
         self.state.config.update(new_config)
 
         emitted = set()
-        for first, *rest in zip(*zip_longest(*diff)):
+        for first, *rest in diff:
             if not first == "axes":
+                continue
+
+            if len(rest) < 2:
                 continue
 
             serial, key, *_ = rest
@@ -67,12 +72,8 @@ class App(QApplication):
         if self.state.config_file is None:
             return
         try:
-            self.state.config_file.write_text(dumps(self.state.config), encoding="utf-8")
+            self.state.config_file.write_text(
+                dumps(self.state.config.unwrap()), encoding="utf-8"
+            )
         except Exception as e:
             logger.error(f"Error while writing config file: {e}")
-
-def deep_pop(d: dict, keys: tuple[str,...]):
-    to_pop = keys[-1]
-    for key in keys[:-1]:
-        d = d[key]
-    return d.pop(to_pop)
