@@ -27,7 +27,7 @@ class App(QApplication):
             self.config_watcher.addPath(str(config_file.absolute()))
         self.config_watcher.fileChanged.connect(self.on_config_changed)
 
-        self.main_window = MainWindow(self.state)
+        self.main_window = MainWindow(self.state, config_provider=self)
         self.main_window.show()
 
         self.exec()

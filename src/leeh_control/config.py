@@ -1,5 +1,3 @@
-from collections import namedtuple
-from collections.abc import Mapping
 import os
 import sys
 import inspect
@@ -7,7 +5,9 @@ import logging
 
 from enum import Enum
 from pathlib import Path
-from typing import Optional, TypedDict, MutableMapping, Callable, Any
+from typing import Optional, TypedDict, MutableMapping, Callable, Any, Protocol, Self
+from collections import namedtuple
+from collections.abc import Mapping
 
 from PySide6.QtCore import Signal, QObject
 from rust_enum import Result
@@ -23,6 +23,11 @@ if getattr(sys, "frozen", False):
 else:
     logger.info("Running in a source tree; using cwd for fallback")
     app_path = Path(os.getcwd())
+
+
+class ConfigProvider(Protocol):
+    def axis_config(self, serial: str) -> AxisConfig: ...
+    def general_config(self) -> GeneralConfig: ...
 
 
 class ConfigParseError(Enum):
@@ -135,56 +140,71 @@ class WaitOnWrite[T, K, V](MutableMapping[K, V]):
         return len(self._pdict)
 
 
-def attrib_signals(cls: type) -> type:
+class AttribSignalsMeta(type):
     """Create a signal for each non-private static attribute of the class."""
-    attribs = []
-    for attr in inspect.getmembers_static(cls, lambda a: not inspect.isroutine(a)):
-        if attr[0].startswith("_"):
-            continue
-        attribs.append(attr[0])
-    type.__setattr__(
-        cls,
-        "_signal_type",
-        type(cls.__name__ + "Signals", (QObject,), {k: Signal() for k in attribs}),
-    )
-    return cls
+
+    def __new__(mcls, name, bases, namespace, **kwargs):
+        cls = super().__new__(mcls, name, bases, namespace, **kwargs)
+        attribs = []
+        for attr in inspect.getmembers_static(cls, lambda a: not inspect.isroutine(a)):
+            if attr[0].startswith("_"):
+                continue
+            attribs.append(attr[0])
+        type.__setattr__(
+            cls,
+            "_signal_type",
+            type(cls.__name__ + "Signals", (QObject,), {k: Signal() for k in attribs}),
+        )
+        return cls
 
 
-@attrib_signals
-class AxisConfig:
-    """
-    Proxy-object holding the configuration options for an axis.
-    Stands between UI and TOMLDocument.
-    Emits a signal when an option is changed through the proxy.
-    Any change is immediately persisted to the config file.
-    Setting a value to None removes the key from the config file.
-    """
-
+class Signals(metaclass=AttribSignalsMeta):
     _signals: QObject
     _signal_type: type[QObject]
-    name: str | None = None
-    offset_lim: Limits[float] = Limits(bottom=0, top=100)
-    freq_lim: Limits[int] = Limits(bottom=0, top=1000)
-    step_V_lim: Limits[float] = Limits(bottom=0, top=60)
-    up: str | None = None
-    down: str | None = None
 
-    def __init__(
-        self, app_config: TOMLDocument, serial: str, persist: Callable[[], Any]
-    ):
-        super().__init__()
-
+    def __init__(self):
         object.__setattr__(self, "_signals", type(self)._signal_type())
 
-        axes = WaitOnWrite(app_config, "axes")
-        self._config = WaitOnWrite(axes, serial)
+
+class BaseConfig(Signals):
+    """Base proxy for config-backed objects with persistence and change signals."""
+
+    _config: MutableMapping[str, Any]
+    _persist: Callable[[], Any]
+    _config_fields: frozenset[str]
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        fields = set()
+        for name, value in cls.__dict__.items():
+            if name.startswith("_"):
+                continue
+            if inspect.isroutine(value) or isinstance(
+                value, (property, classmethod, staticmethod)
+            ):
+                continue
+            fields.add(name)
+        type.__setattr__(cls, "_config_fields", frozenset(fields))
+
+    def __init__(self, config: MutableMapping[str, Any], persist: Callable[[], Any]):
+        super().__init__()
+        self._config = config
         self._persist = persist
 
     def __getattribute__(self, item):
+        if item.startswith("_") or item not in type(self)._config_fields:
+            return object.__getattribute__(self, item)
+
         config = object.__getattribute__(self, "_config")
-        if (val := config.get(item)) is None:
+        if (val := config.get(item, _MISSING)) is _MISSING:
             return object.__getattribute__(self, item)
         return val
+
+    def is_default(self, item: str) -> bool:
+        if item.startswith("_") or item not in type(self)._config_fields:
+            return False
+        config = object.__getattribute__(self, "_config")
+        return item not in config
 
     def __setattr__(self, name, value):
         if name.startswith("_"):
@@ -199,6 +219,7 @@ class AxisConfig:
         else:
             config[name] = value
         persist()
+
         signal = getattr(self._signals, name, None)
         if signal is not None:
             signal.emit()
@@ -207,23 +228,51 @@ class AxisConfig:
     def signals(self) -> QObject:
         return self._signals
 
+
+class AxisConfig(BaseConfig):
+    """
+    Proxy-object holding the configuration options for an axis.
+    Stands between UI and TOMLDocument.
+    Emits a signal when an option is changed through the proxy.
+    Any change is immediately persisted to the config file.
+    Setting a value to None removes the key from the config file.
+    """
+
+    name: str | None = None
+    offset_lim: Limits[float] = Limits(bottom=0, top=100)
+    freq_lim: Limits[int] = Limits(bottom=0, top=1000)
+    step_V_lim: Limits[float] = Limits(bottom=0, top=60)
+    up: str = "up"
+    down: str = "down"
+
+    def __init__(
+        self, app_config: TOMLDocument, serial: str, persist: Callable[[], Any]
+    ):
+        axes = WaitOnWrite(app_config, "axes")
+        super().__init__(WaitOnWrite(axes, serial), persist)
+
+
 _MISSING = object()
+
 
 class Diff(namedtuple("Diff", ["added", "modified", "removed"])):
     def __iter__(self):
         yield from self.added + self.modified + self.removed
+
     def prepend(self, prefix: str):
         return Diff(
             added=[(prefix, *item) for item in self.added],
             modified=[(prefix, *item) for item in self.modified],
             removed=[(prefix, *item) for item in self.removed],
         )
+
     def extend(self, other: Diff):
         return Diff(
             added=self.added + other.added,
             modified=self.modified + other.modified,
             removed=self.removed + other.removed,
         )
+
 
 def difference(old: Mapping, new: Mapping) -> Diff:
     diffs = Diff(added=[], modified=[], removed=[])
