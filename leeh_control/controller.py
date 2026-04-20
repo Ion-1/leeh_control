@@ -50,9 +50,9 @@ class QueryError:
     SerialError = Case(inner=DeviceSerialError)
 
 
-def list_ports() -> list[ListPortInfo]:
+def list_ports(show_fake: Optional[bool] = None) -> list[ListPortInfo]:
     ports: list[ListPortInfo] = lpo.comports()
-    if __debug__:
+    if show_fake or __debug__:
         fake_port = ListPortInfo(FAKE_ANC300_PORT)
         fake_port.description = "Simulated ANC300 controller"
         ports.append(fake_port)
@@ -88,8 +88,8 @@ class ANC300:
     inner: PLL_ANC300
 
     @classmethod
-    def list_ports(cls) -> list[ListPortInfo]:
-        return list_ports()
+    def list_ports(cls, show_fake: Optional[bool] = None) -> list[ListPortInfo]:
+        return list_ports(show_fake=show_fake)
 
     @classmethod
     def connect_COM(

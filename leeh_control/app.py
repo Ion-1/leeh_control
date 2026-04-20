@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class App(QApplication):
-    def __init__(self, config_path: Optional[str] = None, *args, **kwargs):
+    def __init__(self, config_path: Optional[str] = None, show_fake: Optional[bool] = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         config_file, config = parse_config(config_path)
@@ -27,10 +27,8 @@ class App(QApplication):
             self.config_watcher.addPath(str(config_file.absolute()))
         self.config_watcher.fileChanged.connect(self.on_config_changed)
 
-        self.main_window = MainWindow(self.state, config_provider=self)
+        self.main_window = MainWindow(self.state, config_provider=self, show_fake=show_fake)
         self.main_window.show()
-
-        self.exec()
 
     @Slot(str)
     def on_config_changed(self, _path: str):

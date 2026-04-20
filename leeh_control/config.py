@@ -197,7 +197,7 @@ class BaseConfig(Signals):
 
         config = object.__getattribute__(self, "_config")
         if (val := config.get(item, _MISSING)) is _MISSING:
-            return object.__getattribute__(self, item)
+            return object.__getattribute__(type(self), item)
         return val
 
     def is_default(self, item: str) -> bool:
@@ -205,6 +205,9 @@ class BaseConfig(Signals):
             return False
         config = object.__getattribute__(self, "_config")
         return item not in config
+
+    def default(self, item: str) -> Any:
+        return object.__getattribute__(type(self), item)
 
     def __setattr__(self, name, value):
         if name.startswith("_"):

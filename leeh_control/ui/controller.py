@@ -1,7 +1,7 @@
 import logging
 from typing import Any, Callable
 
-from PySide6.QtCore import Qt, Signal, Slot, QSignalBlocker
+from PySide6.QtCore import Qt, Signal, Slot, QSignalBlocker, SignalInstance
 from PySide6.QtWidgets import (
     QWidget,
     QHBoxLayout,
@@ -116,7 +116,7 @@ class ANC300Widget(QWidget):
     def open_settings_dialog(self):
         if self.settings_dialog is None:
             self.settings_dialog = SettingsDialog(
-                axes_serials=[self.controller.get_serial(axis) for axis in self.axes],
+                axes_serials_ids=[(axis.serial, axis.aid) for axis in self.axes_widgs],
                 config_provider=self.config_provider,
                 parent=self,
             )
@@ -206,10 +206,12 @@ class ControllerConsoleWidget(QWidget):
 
 
 class SettingsDialog(QDialog):
-    def __init__(self, axes_serials: list[str], config_provider: ConfigProvider, *args, **kwargs):
+    def __init__(
+        self, axes_serials_ids: list[tuple[str, int]], config_provider: ConfigProvider, *args, **kwargs
+    ):
         super().__init__(*args, **kwargs)
 
-        self.axes_serials = axes_serials
+        self.axes_serials_ids = axes_serials_ids
         self.config_provider = config_provider
 
         self.setModal(False)
@@ -222,18 +224,12 @@ class SettingsDialog(QDialog):
         layout.addWidget(self.tabs)
 
         self._build_general_tab()
-        for serial in self.axes_serials:
-            self._build_axis_tab(serial)
+        for serial, aid in self.axes_serials_ids:
+            self._build_axis_tab(serial, aid)
 
         self.done_button = QPushButton("Done")
         self.done_button.clicked.connect(self.accept)
         layout.addWidget(self.done_button, alignment=Qt.AlignmentFlag.AlignRight)
-
-    @staticmethod
-    def _to_str(value: Any) -> str:
-        if isinstance(value, bool):
-            return "true" if value else "false"
-        return f"{value}"
 
     def _add_optional_text_setting(
         self,
@@ -243,18 +239,19 @@ class SettingsDialog(QDialog):
         field: str,
         default: str | None,
         on_change: Callable[[str | None], None],
+        signal: SignalInstance | None = None,
     ):
         editor = QLineEdit(self)
-        editor.setPlaceholderText(self._to_str(default))
+        editor.setPlaceholderText(str(default))
 
         @Slot()
         def refresh_from_config():
             blocker = QSignalBlocker(editor)
             value = getattr(config, field)
-            if config.is_default(field) or value is None:
+            if config.is_default(field):
                 editor.clear()
             else:
-                editor.setText(value)
+                editor.setText(str(value))
             del blocker
 
         @Slot()
@@ -265,15 +262,9 @@ class SettingsDialog(QDialog):
                 editor.clear()
                 return
 
-            if default is not None and text == default:
-                on_change(None)
-                editor.clear()
-                return
-
             on_change(text)
 
         editor.editingFinished.connect(commit_text)
-        signal = getattr(config.signals, field, None)
         if signal is not None:
             signal.connect(refresh_from_config)
         refresh_from_config()
@@ -286,6 +277,7 @@ class SettingsDialog(QDialog):
         config: Any,
         field: str,
         on_change: Callable[[bool], None],
+        signal: SignalInstance | None = None,
     ):
         row = QWidget(self)
         row_layout = QHBoxLayout(row)
@@ -305,26 +297,27 @@ class SettingsDialog(QDialog):
             value = bool(getattr(config, field))
             if value:
                 enabled_button.setChecked(True)
+                disabled_button.setChecked(False)
             else:
                 disabled_button.setChecked(True)
+                enabled_button.setChecked(False)
             del blocker_disabled
             del blocker_enabled
 
-        @Slot(bool)
-        def on_enabled_toggled(checked: bool):
-            if checked:
-                on_change(True)
+        @Slot()
+        def on_enabled():
+            on_change(True)
 
-        @Slot(bool)
-        def on_disabled_toggled(checked: bool):
-            if checked:
-                on_change(False)
+        @Slot()
+        def on_disabled():
+            on_change(False)
 
-        enabled_button.toggled.connect(on_enabled_toggled)
-        disabled_button.toggled.connect(on_disabled_toggled)
-        signal = getattr(config.signals, field, None)
+        enabled_button.clicked.connect(on_enabled)
+        disabled_button.clicked.connect(on_disabled)
+
         if signal is not None:
             signal.connect(refresh_from_config)
+
         refresh_from_config()
 
         row_layout.addWidget(disabled_button)
@@ -342,6 +335,7 @@ class SettingsDialog(QDialog):
         parser: Callable[[str], Any],
         formatter: Callable[[Any], str],
         on_change: Callable[[Limits[Any] | None], None],
+        signal: SignalInstance | None = None,
     ):
         row = QWidget(self)
         row_layout = QHBoxLayout(row)
@@ -412,9 +406,10 @@ class SettingsDialog(QDialog):
 
         bottom_editor.editingFinished.connect(commit_limit)
         top_editor.editingFinished.connect(commit_limit)
-        signal = getattr(config.signals, field, None)
+
         if signal is not None:
             signal.connect(refresh_from_config)
+
         refresh_from_config()
         form.addRow(label, row)
 
@@ -430,11 +425,12 @@ class SettingsDialog(QDialog):
             config=config,
             field="advanced_mode",
             on_change=lambda value: setattr(config, "advanced_mode", value),
+            signal=config.signals.advanced_mode,  # ty:ignore[unresolved-attribute]
         )
 
         self.tabs.addTab(tab, "General")
 
-    def _build_axis_tab(self, serial: str):
+    def _build_axis_tab(self, serial: str, aid: int):
         config = self.config_provider.axis_config(serial)
 
         tab = QWidget(self)
@@ -447,6 +443,7 @@ class SettingsDialog(QDialog):
             field="name",
             default=AxisConfig.name,
             on_change=lambda value: setattr(config, "name", value),
+            signal=config.signals.name,  # ty:ignore[unresolved-attribute]
         )
 
         self._add_optional_text_setting(
@@ -456,6 +453,7 @@ class SettingsDialog(QDialog):
             field="up",
             default=AxisConfig.up,
             on_change=lambda value: setattr(config, "up", value),
+            signal=config.signals.up,  # ty:ignore[unresolved-attribute]
         )
 
         self._add_optional_text_setting(
@@ -465,6 +463,7 @@ class SettingsDialog(QDialog):
             field="down",
             default=AxisConfig.down,
             on_change=lambda value: setattr(config, "down", value),
+            signal=config.signals.down,  # ty:ignore[unresolved-attribute]
         )
 
         self._add_limit_setting(
@@ -476,6 +475,7 @@ class SettingsDialog(QDialog):
             parser=float,
             formatter=lambda value: f"{float(value):g}",
             on_change=lambda value: setattr(config, "offset_lim", value),
+            signal=config.signals.offset_lim,  # ty:ignore[unresolved-attribute]
         )
 
         self._add_limit_setting(
@@ -487,6 +487,7 @@ class SettingsDialog(QDialog):
             parser=int,
             formatter=lambda value: f"{int(value)}",
             on_change=lambda value: setattr(config, "freq_lim", value),
+            signal=config.signals.freq_lim,  # ty:ignore[unresolved-attribute]
         )
 
         self._add_limit_setting(
@@ -498,7 +499,18 @@ class SettingsDialog(QDialog):
             parser=float,
             formatter=lambda value: f"{float(value):g}",
             on_change=lambda value: setattr(config, "step_V_lim", value),
+            signal=config.signals.step_V_lim,  # ty:ignore[unresolved-attribute]
         )
+        
+        def name_label(text: str | None):
+            if text is None:
+                return f"Axis {aid}"
+            else:
+                return f"Axis {text}"
 
-        self.tabs.addTab(tab, serial)
-
+        index = self.tabs.addTab(tab, name_label(config.name))
+        
+        @Slot()
+        def name_change():
+            self.tabs.setTabText(index, name_label(config.name))
+        config.signals.name.connect(name_change)

@@ -1,2 +1,5 @@
 [general]
-advanced_mode = true
+advanced_mode = false
+
+[axes.ANM300-003]
+name = "a udhdsd"

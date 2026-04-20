@@ -1,6 +1,8 @@
-from serial.tools.list_ports_common import ListPortInfo
 import logging
 
+from typing import Optional
+
+from serial.tools.list_ports_common import ListPortInfo
 from PySide6.QtCore import Slot, Signal
 from PySide6.QtWidgets import (
     QMainWindow,
@@ -24,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, state: AppState, config_provider: ConfigProvider, *args, **kwargs):
+    def __init__(self, state: AppState, config_provider: ConfigProvider, show_fake: Optional[bool] = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.app_state = state
@@ -33,7 +35,7 @@ class MainWindow(QMainWindow):
         self.widget_stack = QStackedWidget(self)
         self.setCentralWidget(self.widget_stack)
 
-        self.choose_widget = ChooseControllerWindow(self)
+        self.choose_widget = ChooseControllerWindow(show_fake, parent=self)
         self.choose_widget.selection.connect(self.connect_controller)
         self.widget_stack.insertWidget(0, self.choose_widget)
 
@@ -60,7 +62,7 @@ class MainWindow(QMainWindow):
 class ChooseControllerWindow(QWidget):
     selection = Signal(ListPortInfo)
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, show_fake: Optional[bool] = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
         layout = QVBoxLayout(self)
@@ -76,7 +78,7 @@ class ChooseControllerWindow(QWidget):
         drop_layout.addWidget(self.refresh_button)
         self.refresh_button.clicked.connect(self.refresh)
 
-        ports = ANC300.list_ports()
+        ports = ANC300.list_ports(show_fake=show_fake)
 
         for port in ports:
             self.dropdown.addItem(port.name, userData=port)
