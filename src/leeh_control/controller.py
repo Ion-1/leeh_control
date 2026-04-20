@@ -60,7 +60,7 @@ def list_ports() -> list[ListPortInfo]:
     return ports
 
 
-def log_errors[T, **P](func: Callable[P, T]) -> Callable[P, T]:
+def handle_errors[T, **P](func: Callable[P, T]) -> Callable[P, T]:
     @functools.wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
         try:
@@ -152,67 +152,67 @@ class ANC300:
     def axes(self) -> list[int]:
         return self.inner.get_all_axes()
 
-    @log_errors
+    @handle_errors
     def query_controller(self, query: str) -> str:
         logger.info(f"Querying ANC300 controller: {query}")
         return self.inner.query(query)
 
-    @log_errors
+    @handle_errors
     def get_device_info(self) -> tuple[str, str]:
         logger.info("Getting ANC300 device info")
         return self.inner.get_device_info()
 
-    @log_errors
+    @handle_errors
     def get_serial(self, axis: int) -> str:
         logger.info(f"Getting ANC300 axis {axis} serial number")
         return self.inner.get_axis_serial(axis=axis)
 
-    @log_errors
+    @handle_errors
     def get_mode(self, axis: int) -> str:
         logger.info(f"Getting ANC300 axis {axis} mode")
         return self.inner.get_mode(axis=axis)
 
-    @log_errors
+    @handle_errors
     def set_mode(self, axis: int, mode: str):
         logger.info(f"Setting ANC300 axis {axis} mode to {mode}")
         return self.inner.set_mode(axis=axis, mode=mode)
 
-    @log_errors
+    @handle_errors
     def get_voltage(self, axis: int) -> float:
         logger.info(f"Getting ANC300 axis {axis} voltage")
         return self.inner.get_voltage(axis=axis)
 
-    @log_errors
+    @handle_errors
     def set_voltage(self, axis: int, voltage: float):
         logger.info(f"Setting ANC300 axis {axis} voltage to {voltage}")
         return self.inner.set_voltage(axis=axis, voltage=voltage)
 
-    @log_errors
+    @handle_errors
     def get_offset(self, axis: int) -> float:
         logger.info(f"Getting ANC300 axis {axis} offset voltage")
         return self.inner.get_offset(axis=axis)
 
-    @log_errors
+    @handle_errors
     def set_offset(self, axis: int, voltage: float):
         logger.info(f"Setting ANC300 axis {axis} offset voltage to {voltage}")
         return self.inner.set_offset(axis=axis, voltage=voltage)
 
-    @log_errors
+    @handle_errors
     def get_frequency(self, axis: int) -> float:
         logger.info(f"Getting ANC300 axis {axis} frequency")
         return self.inner.get_frequency(axis=axis)
 
-    @log_errors
+    @handle_errors
     def set_frequency(self, axis: int, freq: float):
         logger.info(f"Setting ANC300 axis {axis} frequency to {freq}")
         return self.inner.set_frequency(axis=axis, freq=freq)
 
-    @log_errors
+    @handle_errors
     def get_capacitance(self, axis: int, measure: bool = False) -> float:
         logger.info(f"Getting ANC300 axis {axis} capacitance with measure={measure}")
         return self.inner.get_capacitance(axis=axis, measure=measure)
 
-    @log_errors
+    @handle_errors
     def get_filter(self, axis: int) -> str:
         logger.info(f"Getting ANC300 axis {axis} filter setting")
         return self._get_filter(axis=axis)
@@ -221,7 +221,7 @@ class ANC300:
         reply = self.inner.query(f"getfil {axis}")
         return self.inner._parse_string_reply(reply, "filter")
 
-    @log_errors
+    @handle_errors
     def set_filter(self, axis: int, filter_: str) -> str:
         logger.info(f"Setting ANC300 axis {axis} filter to {filter}")
         return self._set_filter(axis=axis, filter_=filter_)
@@ -230,7 +230,7 @@ class ANC300:
         self.inner.query(f"setfil {axis} {filter_}")
         return self._get_filter(axis=axis)
 
-    @log_errors
+    @handle_errors
     def step(self, axis: int, steps: int | Literal["c+", "c-"]):
         if steps == "c+":
             logger.info(f"Starting continuous stepping upwards on ANC300 axis {axis}")
@@ -244,19 +244,19 @@ class ANC300:
             )
             self.inner.move_by(axis=axis, steps=steps)
 
-    @log_errors
+    @handle_errors
     def stop(self, axis: int):
         logger.info(f"Stopping motion on ANC300 axis {axis}")
         self.inner.stop(axis=axis)
 
-    @log_errors
+    @handle_errors
     def get_external_input_modes(
         self, axis: int
     ) -> tuple[Annotated[bool, "AC-In"], Annotated[bool, "DC-In"]]:
         logger.info(f"Getting external input modes on ANC300 axis {axis}")
         return self.inner.get_external_input_modes(axis=axis)
 
-    @log_errors
+    @handle_errors
     def set_external_input_modes(
         self, axis: int, acin: Optional[bool], dcin: Optional[bool]
     ):
