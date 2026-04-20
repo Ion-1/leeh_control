@@ -22,7 +22,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QGroupBox,
     QSizePolicy,
-    QScrollArea,
     QFrame,
     QToolTip,
 )
@@ -198,22 +197,16 @@ class ANM300Widget(QFrame):
         self.mode_group.addButton(self.stp_minus_button)
         layout.addWidget(self.stp_minus_button)
 
-        self.area = QScrollArea()
-        self.area.setWidgetResizable(True)
-        self.area.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-        self.area.setFrameStyle(QFrame.Shape.NoFrame | QFrame.Shadow.Plain)
-        self.area.setSizePolicy(
+        self.mode_container = QWidget()
+        self.mode_container.setSizePolicy(
             QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Preferred
         )
-        self.area.setSizeAdjustPolicy(QScrollArea.SizeAdjustPolicy.AdjustToContents)
-        layout.addWidget(self.area, stretch=1)
-
-        self.mode_container = QWidget()
         self.mode_container_layout = QVBoxLayout(self.mode_container)
         self.mode_container_layout.setContentsMargins(0, 0, 0, 0)
         self.mode_container_layout.setSizeConstraint(
             QVBoxLayout.SizeConstraint.SetMinAndMaxSize
         )
+        layout.addWidget(self.mode_container, stretch=1)
 
         self.mode_stack = CurrentPageStackedWidget()
         self.mode_stack.setSizePolicy(
@@ -223,7 +216,6 @@ class ANM300Widget(QFrame):
 
         self.mode_container_layout.addWidget(self.mode_stack)
         self.mode_container_layout.addStretch(1)
-        self.area.setWidget(self.mode_container)
 
         self.stepping_widget = SteppingModeWidget(
             aid,
@@ -371,7 +363,6 @@ class ANM300Widget(QFrame):
     def _refresh_geometry(self):
         self.mode_stack.updateGeometry()
         self.mode_container.updateGeometry()
-        self.area.updateGeometry()
         self.updateGeometry()
         self.adjustSize()
 
