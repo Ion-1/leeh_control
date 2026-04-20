@@ -8,7 +8,7 @@ from PySide6.QtCore import QFileSystemWatcher, Slot
 from PySide6.QtWidgets import QApplication
 from tomlkit import dumps
 
-from .config import parse_config, AxisConfig, difference
+from .config import parse_config, AxisConfig, difference, GeneralConfig
 from .state import AppState
 from .ui.main_window import MainWindow
 
@@ -63,6 +63,10 @@ class App(QApplication):
             if signal is not None and key not in emitted:
                 signal.emit()
                 emitted.add(key)
+
+    @cache
+    def general_config(self) -> GeneralConfig:
+        return GeneralConfig(self.state.config, self._persist_config)
 
     @cache
     def axis_config(self, serial: str) -> AxisConfig:

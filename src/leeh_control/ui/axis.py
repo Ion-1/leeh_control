@@ -1,7 +1,7 @@
-import functools
 import logging
+import functools
+
 from enum import StrEnum
-from functools import cached_property
 from typing import Callable, Literal
 
 from PySide6.QtCore import Slot, Signal, SignalInstance, QSize, Qt
@@ -11,7 +11,6 @@ from PySide6.QtGui import (
     QIntValidator,
 )
 from PySide6.QtWidgets import (
-    QApplication,
     QWidget,
     QVBoxLayout,
     QLabel,
@@ -28,7 +27,7 @@ from PySide6.QtWidgets import (
     QToolTip,
 )
 
-import leeh_control.app as lapp
+from ..config import Limits, ConfigProvider
 from ..controller import ANC300
 
 logger = logging.getLogger(__name__)
@@ -75,10 +74,15 @@ def ensure_acceptable_input(line_edit: QLineEdit, message: str | None = None) ->
     return False
 
 
-def attach_validation_balloon(line_edit: QLineEdit, message: str | None = None):
+def attach_validation_balloon(
+    line_edit: QLineEdit, call_message: Callable[[QValidator], str] | None = None
+):
     line_edit.inputRejected.connect(
         lambda: tooltip_popup_with_focus(
-            line_edit, message or _validator_error_message(line_edit.validator())
+            line_edit,
+            call_message(line_edit.validator())
+            if call_message is not None
+            else _validator_error_message(line_edit.validator()),
         )
     )
 
@@ -134,6 +138,7 @@ class ANM300Widget(QFrame):
         serial: str,
         aid: int,
         controller: ANC300,
+        config_provider: ConfigProvider,
         *args,
         **kwargs,
     ):
@@ -143,7 +148,8 @@ class ANM300Widget(QFrame):
         self.serial = serial
         self.aid = aid
         self.controller = controller
-        self.config = self._app.axis_config(self.serial)
+        self.config_provider = config_provider
+        self.config = config_provider.axis_config(serial)
 
         self.config.signals.name.connect(self._refresh_name)  # ty:ignore[unresolved-attribute]
 
@@ -219,25 +225,69 @@ class ANM300Widget(QFrame):
         self.mode_container_layout.addStretch(1)
         self.area.setWidget(self.mode_container)
 
+        self.stepping_widget = SteppingModeWidget(
+            aid,
+            controller,
+            self.config.step_V_lim,
+            self.config.freq_lim,
+            self.config.up,
+            self.config.down,
+        )
+        self.offset_widget = ScanningModeWidget(
+            aid, controller, **self.config.offset_lim
+        )
+        self.input_widget = InputModeWidget(aid, controller)
+        self.scan_and_step_widget = ScanAndStepModeWidget(
+            aid,
+            controller,
+            self.config.offset_lim,
+            self.config.step_V_lim,
+            self.config.freq_lim,
+            self.config.up,
+            self.config.down,
+        )
+
         self.stack_indices = {
             self.Modes.Ground: self.mode_stack.addWidget(GroundModeWidget()),
-            self.Modes.Stepping: self.mode_stack.addWidget(
-                SteppingModeWidget(aid, controller)
+            self.Modes.Stepping: self.mode_stack.addWidget(self.stepping_widget),
+            self.Modes.Offset: self.mode_stack.addWidget(self.offset_widget),
+            self.Modes.Input: self.mode_stack.addWidget(self.input_widget),
+            self.Modes.Off_minus_step: (
+                step_scan_int := self.mode_stack.addWidget(self.scan_and_step_widget)
             ),
-            self.Modes.Offset: self.mode_stack.addWidget(
-                ScanningModeWidget(aid, controller)
-            ),
-            self.Modes.Input: self.mode_stack.addWidget(
-                InputModeWidget(aid, controller)
-            ),
-            self.Modes.Off_minus_step: self.mode_stack.addWidget(
-                ScanAndStepModeWidget(aid, controller)
-            ),
-            self.Modes.Off_plus_step: self.mode_stack.addWidget(
-                ScanAndStepModeWidget(aid, controller)
-            ),
+            self.Modes.Off_plus_step: step_scan_int,
             self.Modes.Capacitance: self.mode_stack.addWidget(CapacitanceModeWidget()),
         }
+
+        self.config.signals.offset_lim.connect(  # ty:ignore[unresolved-attribute]
+            lambda: self.offset_widget.refresh_limits(**self.config.offset_lim)
+        )
+        self.config.signals.freq_lim.connect(  # ty:ignore[unresolved-attribute]
+            lambda: (
+                self.stepping_widget.refresh_freq_limits(**self.config.freq_lim),
+                self.scan_and_step_widget.refresh_freq_limits(**self.config.freq_lim),
+            )
+        )
+        self.config.signals.step_V_lim.connect(  # ty:ignore[unresolved-attribute]
+            lambda: (
+                self.stepping_widget.refresh_stepV_limits(**self.config.step_V_lim),
+                self.scan_and_step_widget.refresh_stepV_limits(
+                    **self.config.step_V_lim
+                ),
+            )
+        )
+        self.config.signals.up.connect(  # ty:ignore[unresolved-attribute]
+            lambda: (
+                self.stepping_widget.refresh_up_name(self.config.up),
+                self.scan_and_step_widget.refresh_up_name(self.config.up),
+            )
+        )
+        self.config.signals.down.connect(  # ty:ignore[unresolved-attribute]
+            lambda: (
+                self.stepping_widget.refresh_down_name(self.config.down),
+                self.scan_and_step_widget.refresh_down_name(self.config.down),
+            )
+        )
 
         self.filter_widget = FilterWidget(aid, controller, self.FilterModes)
         layout.addWidget(self.filter_widget)
@@ -251,10 +301,6 @@ class ANM300Widget(QFrame):
         if (name := self.config.name) is not None:
             return f"{name} (AID {self.aid}) ({self.serial})"
         return f"Axis {self.aid} ({self.serial})"
-
-    @cached_property
-    def _app(self) -> lapp.App:
-        return QApplication.instance()  # ty:ignore[invalid-return-type]
 
     def _show_label_text(self):
         self.label.setReadOnly(True)
@@ -532,7 +578,7 @@ class TwoOptionsRadioWidget(QGroupBox):
 
 
 class ScanningModeWidget(QWidget):
-    def __init__(self, aid: int, controller: ANC300, *args, **kwargs):
+    def __init__(self, aid: int, controller: ANC300, bottom, top, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         layout = QVBoxLayout(self)
@@ -543,8 +589,8 @@ class ScanningModeWidget(QWidget):
         self.scan_widget = ScanWidget(
             "Offset (V)",
             self.controller.get_offset(aid),
-            0,
-            100,
+            bottom,
+            top,
             [
                 ("-20", lambda x: x - 20),
                 ("-10", lambda x: x - 10),
@@ -565,6 +611,10 @@ class ScanningModeWidget(QWidget):
         self.scan_widget.set_active_unvalidated(
             self.controller.set_offset(self.aid, offset)
         )
+
+    @Slot(float, float)
+    def refresh_limits(self, bottom: float, top: float):
+        self.scan_widget.refresh_limits(bottom, top)
 
     def refresh(self):
         """
@@ -604,7 +654,9 @@ class ScanWidget(QGroupBox):
         self.line_edit.setValidator(self.validator)
         attach_validation_balloon(
             self.line_edit,
-            f"Enter a value between {self.bottom:g} and {self.top:g}.",
+            lambda validator: (
+                f"Enter a value between {validator.bottom():g} and {validator.top():g}."
+            ),
         )
         self.line_edit.editingFinished.connect(self._emit_changed_if_valid)
 
@@ -621,6 +673,12 @@ class ScanWidget(QGroupBox):
             layout2.addWidget(but := QPushButton(rs_label))
             but.clicked.connect(functools.partial(self.on_step_clicked, func=rs_call))
         layout.addLayout(layout2)
+
+    @Slot(float, float)
+    def refresh_limits(self, bottom: float, top: float):
+        self.validator.setRange(bottom, top)
+        self.bottom = bottom
+        self.top = top
 
     @Slot()
     def on_step_clicked(self, func: Callable[[float], float]):
@@ -698,6 +756,10 @@ class SteppingModeWidget(QWidget):
         self,
         aid: int,
         controller: ANC300,
+        stepV_lims: Limits[float],
+        freq_lims: Limits[int],
+        up_name: str,
+        down_name: str,
         *args,
         mode: Literal["hold", "toggle"] = "hold",
         **kwargs,
@@ -706,13 +768,16 @@ class SteppingModeWidget(QWidget):
 
         self.aid = aid
         self.controller = controller
+        self.frequency_validator = QIntValidator(**freq_lims)
+        self.voltage_validator = QDoubleValidator(**stepV_lims, decimals=6)
+        self.voltage_validator.setNotation(QDoubleValidator.Notation.StandardNotation)
 
         layout = QVBoxLayout(self)
 
         self.frequency = NumButton(
             "Frequency (Hz)",
             f"{int(self.controller.get_frequency(self.aid))}",
-            validator=QIntValidator(0, 10000),
+            validator=self.frequency_validator,
         )
         layout.addWidget(self.frequency)
         self.frequency.submit.connect(self.set_freq)
@@ -720,32 +785,64 @@ class SteppingModeWidget(QWidget):
         self.voltage = NumButton(
             "Voltage (V)",
             f"{self.controller.get_voltage(self.aid):f}",
-            validator=QDoubleValidator(bottom=0, top=150, decimals=6),
+            validator=self.voltage_validator,
         )
         layout.addWidget(self.voltage)
         self.voltage.submit.connect(self.set_voltage)
 
-        self.plusminus = StepsWidget()
+        self.plusminus = StepsWidget(
+            "Move #n steps", up_name=up_name, down_name=down_name, placeholder="n"
+        )
         layout.addWidget(self.plusminus)
         self.plusminus.step_signal.connect(self.step)
 
-        self.continuously_stop = ContinuousStepsWidget("C-", "STOP", "C+", mode=mode)
+        self.continuously_stop = ContinuousStepsWidget(
+            f"Continuous Stepping ({mode.capitalize()})",
+            up_name=up_name,
+            down_name=down_name,
+            mode=mode,
+        )
         layout.addWidget(self.continuously_stop)
+
         self.continuously_stop.left_signal.connect(lambda: self.step("c-"))
         self.continuously_stop.middle_signal.connect(self.stop)
         self.continuously_stop.right_signal.connect(lambda: self.step("c+"))
 
+        self.stop_button = QPushButton("STOP")
+        layout.addWidget(self.stop_button)
+        self.stop_button.pressed.connect(self.stop)
+
     @Slot(str)
     def set_freq(self, freq: str):
         freqs = int(freq)
-        assert 0 <= freqs <= 10000
+        assert (
+            self.frequency_validator.bottom() <= freqs <= self.frequency_validator.top()
+        )
         self.frequency.setText(f"{int(self.controller.set_frequency(self.aid, freqs))}")
 
     @Slot(str)
     def set_voltage(self, voltage: str):
         volts = float(voltage)
-        assert 0 <= volts <= 150
+        assert self.voltage_validator.bottom() <= volts <= self.voltage_validator.top()
         self.voltage.setText(f"{self.controller.set_voltage(self.aid, volts):f}")
+
+    @Slot(int, int)
+    def refresh_freq_limits(self, bottom: int, top: int):
+        self.frequency_validator.setRange(bottom, top)
+
+    @Slot(float, float)
+    def refresh_stepV_limits(self, bottom: float, top: float):
+        self.voltage_validator.setRange(bottom, top, self.voltage_validator.decimals())
+
+    @Slot(str)
+    def refresh_up_name(self, up_name: str):
+        self.plusminus.set_up_name(up_name)
+        self.continuously_stop.set_up_name(up_name)
+
+    @Slot(str)
+    def refresh_down_name(self, down_name: str):
+        self.plusminus.set_down_name(down_name)
+        self.continuously_stop.set_down_name(down_name)
 
     @Slot(int)
     def step(self, steps):
@@ -760,7 +857,7 @@ class SteppingModeWidget(QWidget):
         self.voltage.setText(f"{self.controller.get_voltage(self.aid):f}")
 
 
-class StepsWidget(QWidget):
+class StepsWidget(QGroupBox):
     step_signal = Signal(int)
 
     def convert_to_str(self, x: int) -> str:
@@ -792,12 +889,44 @@ class StepsWidget(QWidget):
             return
         self.step_signal.emit(steps)
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def _down_button_text(self) -> str:
+        return f"<-[{self.down_name}]-"
+
+    def _up_button_text(self) -> str:
+        return f"-[{self.up_name}]->"
+
+    @Slot(str)
+    def set_up_name(self, up_name: str):
+        self.up_name = up_name
+        self.step_up_button.setText(self._up_button_text())
+
+    @Slot(str)
+    def set_down_name(self, down_name: str):
+        self.down_name = down_name
+        self.step_down_button.setText(self._down_button_text())
+
+    @Slot(str, str)
+    def set_step_names(self, up_name: str, down_name: str):
+        self.set_up_name(up_name)
+        self.set_down_name(down_name)
+
+    def __init__(
+        self,
+        title,
+        up_name: str = "up",
+        down_name: str = "down",
+        placeholder: str = "",
+        *args,
+        **kwargs,
+    ):
+        super().__init__(title, *args, **kwargs)
+
+        self.up_name = up_name
+        self.down_name = down_name
 
         layout = QHBoxLayout(self)
 
-        self.step_down_button = QPushButton("<-[down]-")
+        self.step_down_button = QPushButton(self._down_button_text())
         self.step_down_button.clicked.connect(self.on_step_down)
         layout.addWidget(self.step_down_button)
 
@@ -806,16 +935,33 @@ class StepsWidget(QWidget):
         self.validator = QIntValidator(0, 10000)
         self.line_edit.setValidator(self.validator)
         attach_validation_balloon(self.line_edit)
+        self.line_edit.setPlaceholderText(placeholder)
 
-        self.step_up_button = QPushButton("-[up]->")
+        self.step_up_button = QPushButton(self._up_button_text())
         self.step_up_button.clicked.connect(self.on_step_up)
         layout.addWidget(self.step_up_button)
 
 
-class ContinuousStepsWidget(QWidget):
+class ContinuousStepsWidget(QGroupBox):
     left_signal = Signal()
     middle_signal = Signal()
     right_signal = Signal()
+
+    def _left_button_text(self) -> str:
+        return f"{self.down_name}"
+
+    def _right_button_text(self) -> str:
+        return f"{self.up_name}"
+
+    @Slot(str)
+    def set_up_name(self, up_name: str):
+        self.up_name = up_name
+        self.right_button.setText(self._right_button_text())
+
+    @Slot(str)
+    def set_down_name(self, down_name: str):
+        self.down_name = down_name
+        self.left_button.setText(self._left_button_text())
 
     @Slot()
     def on_left(self):
@@ -841,27 +987,26 @@ class ContinuousStepsWidget(QWidget):
 
     def __init__(
         self,
-        left_label: str,
-        middle_label: str,
-        right_label: str,
+        title: str,
+        up_name: str = "up",
+        down_name: str = "down",
         *args,
         mode: Literal["hold", "toggle"] = "hold",
         **kwargs,
     ):
-        super().__init__(*args, **kwargs)
+        super().__init__(title, *args, **kwargs)
+
+        self.up_name = up_name
+        self.down_name = down_name
 
         layout = QHBoxLayout(self)
 
-        self.left_button = QPushButton(left_label)
+        self.left_button = QPushButton(self._left_button_text())
         layout.addWidget(self.left_button)
 
-        self.middle_button = QPushButton(middle_label)
-        layout.addWidget(self.middle_button)
-
-        self.right_button = QPushButton(right_label)
+        self.right_button = QPushButton(self._right_button_text())
         layout.addWidget(self.right_button)
 
-        self.middle_button.pressed.connect(self.on_middle)
         if mode == "hold":
             self.left_button.pressed.connect(self.on_left)
             self.right_button.pressed.connect(self.on_right)
@@ -906,7 +1051,18 @@ class NumButton(QGroupBox):
 
 
 class ScanAndStepModeWidget(QWidget):
-    def __init__(self, aid: int, controller: ANC300, *args, **kwargs):
+    def __init__(
+        self,
+        aid: int,
+        controller: ANC300,
+        off_lim: Limits[float],
+        stepV_lim: Limits[float],
+        freq_lim: Limits[int],
+        up,
+        down,
+        *args,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
 
         layout = QVBoxLayout(self)
@@ -914,18 +1070,30 @@ class ScanAndStepModeWidget(QWidget):
         self.aid = aid
         self.controller = controller
 
-        self.scan_group = QGroupBox("Scanning")
-        self.scan_layout = QVBoxLayout(self.scan_group)
-        self.scan_widget = ScanningModeWidget(aid, controller, parent=self.scan_group)
-        self.scan_layout.addWidget(self.scan_widget)
-        layout.addWidget(self.scan_group)
+        self.scan_widget = ScanningModeWidget(aid, controller, **off_lim)
+        layout.addWidget(self.scan_widget)
 
-        self.step_group = QGroupBox("Stepping")
-        self.step_layout = QVBoxLayout(self.step_group)
-        self.step_widget = SteppingModeWidget(aid, controller, parent=self.step_group)
-        self.step_layout.addWidget(self.step_widget)
-        layout.addWidget(self.step_group)
+        self.step_widget = SteppingModeWidget(
+            aid, controller, stepV_lim, freq_lim, up, down
+        )
+        layout.addWidget(self.step_widget)
 
     def refresh(self):
         self.scan_widget.refresh()
         self.step_widget.refresh()
+
+    @Slot(int, int)
+    def refresh_freq_limits(self, bottom: int, top: int):
+        self.step_widget.refresh_freq_limits(bottom, top)
+
+    @Slot(float, float)
+    def refresh_stepV_limits(self, bottom: float, top: float):
+        self.step_widget.refresh_stepV_limits(bottom, top)
+
+    @Slot(str)
+    def refresh_up_name(self, up_name: str):
+        self.step_widget.refresh_up_name(up_name)
+
+    @Slot(str)
+    def refresh_down_name(self, down_name: str):
+        self.step_widget.refresh_down_name(down_name)

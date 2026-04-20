@@ -252,6 +252,21 @@ class AxisConfig(BaseConfig):
         super().__init__(WaitOnWrite(axes, serial), persist)
 
 
+class GeneralConfig(BaseConfig):
+    """
+    Proxy-object holding the general configuration options.
+    Stands between UI and TOMLDocument.
+    Emits a signal when an option is changed through the proxy.
+    Any change is immediately persisted to the config file.
+    Setting a value to None removes the key from the config file.
+    """
+
+    advanced_mode: bool = False
+
+    def __init__(self, app_config: TOMLDocument, persist: Callable[[], Any]):
+        super().__init__(WaitOnWrite(app_config, "general"), persist)
+
+
 _MISSING = object()
 
 
@@ -279,8 +294,14 @@ def difference(old: Mapping, new: Mapping) -> Diff:
     for key in set(old.keys()) | set(new.keys()):
         if (av := old.get(key, _MISSING)) is _MISSING:
             diffs.added.append((key,))
+            if isinstance(new[key], Mapping):
+                sub_diffs = difference({}, new[key])
+                diffs = diffs.extend(sub_diffs.prepend(key))
         elif (bv := new.get(key, _MISSING)) is _MISSING:
             diffs.removed.append((key,))
+            if isinstance(old[key], Mapping):
+                sub_diffs = difference(old[key], {})
+                diffs = diffs.extend(sub_diffs.prepend(key))
         elif isinstance(av, Mapping) and isinstance(bv, Mapping):
             sub_diffs = difference(av, bv)
             diffs = diffs.extend(sub_diffs.prepend(key))

@@ -17,16 +17,18 @@ from PySide6.QtWidgets import (
 from .controller import ANC300Widget
 from ..controller import ANC300, COMConnectionOptions
 from ..state import ControllerState, AppState
+from ..config import ConfigProvider
 
 
 logger = logging.getLogger(__name__)
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, state: AppState, *args, **kwargs):
+    def __init__(self, state: AppState, config_provider: ConfigProvider, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.app_state = state
+        self.config_provider = config_provider
 
         self.widget_stack = QStackedWidget(self)
         self.setCentralWidget(self.widget_stack)
@@ -49,7 +51,7 @@ class MainWindow(QMainWindow):
         
         self.app_state.controller = ControllerState.Connected(con := connect_result.unwrap())
 
-        self.controller_widget = ANC300Widget(con)
+        self.controller_widget = ANC300Widget(con, self.config_provider)
         self.widget_stack.insertWidget(1, self.controller_widget)
         self.widget_stack.setCurrentIndex(1)
         
