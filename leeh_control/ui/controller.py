@@ -2,6 +2,7 @@ import logging
 from typing import Any, Callable
 
 from PySide6.QtCore import Qt, Signal, Slot, QSignalBlocker, SignalInstance
+from PySide6.QtGui import QValidator, QDoubleValidator, QIntValidator
 from PySide6.QtWidgets import (
     QWidget,
     QHBoxLayout,
@@ -21,7 +22,11 @@ from pylablib.core.utils import py3
 from pylablib.devices.Attocube.anc300 import ANC300 as PLL_ANC300, AttocubeError
 
 from .axis import ANM300Widget
-from .utils import TwoOptionsRadioWidget
+from .utils import (
+    TwoOptionsRadioWidget,
+    acceptable_input_popup,
+    tooltip_popup_with_focus,
+)
 from ..config import ConfigProvider, AxisConfig, Limits
 from ..controller import ANC300
 
@@ -122,6 +127,14 @@ class ANC300Widget(QWidget):
         self.settings_dialog.show()
         self.settings_dialog.raise_()
         self.settings_dialog.activateWindow()
+        self.settings_dialog.accepted.connect(self.settings_dialog_accepted)
+
+    @Slot()
+    def settings_dialog_accepted(self):
+        if self.settings_dialog is None:
+            return
+        self.settings_dialog.destroy()
+        self.settings_dialog = None
 
     @Slot(bool)
     def toggle_console(self, checked: bool):
@@ -206,7 +219,11 @@ class ControllerConsoleWidget(QWidget):
 
 class SettingsDialog(QDialog):
     def __init__(
-        self, axes_serials_ids: list[tuple[str, int]], config_provider: ConfigProvider, *args, **kwargs
+        self,
+        axes_serials_ids: list[tuple[str, int]],
+        config_provider: ConfigProvider,
+        *args,
+        **kwargs,
     ):
         super().__init__(*args, **kwargs)
 
@@ -245,13 +262,12 @@ class SettingsDialog(QDialog):
 
         @Slot()
         def refresh_from_config():
-            blocker = QSignalBlocker(editor)
-            value = getattr(config, field)
-            if config.is_default(field):
-                editor.clear()
-            else:
-                editor.setText(str(value))
-            del blocker
+            with QSignalBlocker(editor):
+                value = getattr(config, field)
+                if config.is_default(field):
+                    editor.clear()
+                else:
+                    editor.setText(str(value))
 
         @Slot()
         def commit_text():
@@ -263,10 +279,14 @@ class SettingsDialog(QDialog):
 
             on_change(text)
 
+        if not config.is_default(field):
+            editor.setText(str(getattr(config, field)))
+
         editor.editingFinished.connect(commit_text)
+
         if signal is not None:
             signal.connect(refresh_from_config)
-        refresh_from_config()
+
         form.addRow(label, editor)
 
     def _add_bool_setting(
@@ -279,13 +299,11 @@ class SettingsDialog(QDialog):
         signal: SignalInstance | None = None,
     ):
         row = TwoOptionsRadioWidget(
-            title="",
             false_text="Disabled",
             true_text="Enabled",
             initial=bool(getattr(config, field)),
             parent=self,
         )
-        row.setFlat(True)
 
         @Slot()
         def refresh_from_config():
@@ -296,7 +314,6 @@ class SettingsDialog(QDialog):
         if signal is not None:
             signal.connect(refresh_from_config)
 
-        refresh_from_config()
         form.addRow(label, row)
 
     def _add_limit_setting(
@@ -306,6 +323,7 @@ class SettingsDialog(QDialog):
         config: Any,
         field: str,
         default: Limits[Any],
+        line_edit_validator: QValidator,
         parser: Callable[[str], Any],
         formatter: Callable[[Any], str],
         on_change: Callable[[Limits[Any] | None], None],
@@ -321,23 +339,23 @@ class SettingsDialog(QDialog):
         bottom_editor.setPlaceholderText(formatter(default["bottom"]))
         top_editor.setPlaceholderText(formatter(default["top"]))
 
+        bottom_editor.setValidator(line_edit_validator)
+        top_editor.setValidator(line_edit_validator)
+
         @Slot()
         def refresh_from_config():
-            blocker_bottom = QSignalBlocker(bottom_editor)
-            blocker_top = QSignalBlocker(top_editor)
-            current = getattr(config, field)
-            if config.is_default(field):
-                bottom_editor.clear()
-                top_editor.clear()
-            else:
-                bottom_editor.setText(formatter(current["bottom"]))
-                top_editor.setText(formatter(current["top"]))
-            del blocker_bottom
-            del blocker_top
+            with QSignalBlocker(bottom_editor), QSignalBlocker(top_editor):
+                current = getattr(config, field)
+                if config.is_default(field):
+                    bottom_editor.clear()
+                    top_editor.clear()
+                else:
+                    bottom_editor.setText(formatter(current["bottom"]))
+                    top_editor.setText(formatter(current["top"]))
 
-        row_layout.addWidget(QLabel("bottom", self))
+        row_layout.addWidget(QLabel("bottom:", self))
         row_layout.addWidget(bottom_editor)
-        row_layout.addWidget(QLabel("top", self))
+        row_layout.addWidget(QLabel("top:", self))
         row_layout.addWidget(top_editor)
 
         @Slot()
@@ -351,21 +369,31 @@ class SettingsDialog(QDialog):
                 top_editor.clear()
                 return
 
-            try:
-                bottom = parser(bottom_text) if bottom_text != "" else default["bottom"]
-                top = parser(top_text) if top_text != "" else default["top"]
-            except ValueError:
-                refresh_from_config()
+            if bottom_text == "":
+                bottom = default["bottom"]
+            elif not acceptable_input_popup(bottom_editor):
                 return
+            else:
+                bottom = parser(bottom_text)
+
+            if top_text == "":
+                top = default["top"]
+            elif not acceptable_input_popup(top_editor):
+                return
+            else:
+                top = parser(top_text)
 
             if bottom > top:
-                refresh_from_config()
-                return
-
-            if bottom == default["bottom"] and top == default["top"]:
-                on_change(None)
-                bottom_editor.clear()
-                top_editor.clear()
+                if top_editor.hasFocus():
+                    tooltip_popup_with_focus(
+                        top_editor,
+                        "Top limit must be greater than or equal to bottom limit.",
+                    )
+                else:
+                    tooltip_popup_with_focus(
+                        bottom_editor,
+                        "Bottom limit must be less than or equal to top limit.",
+                    )
                 return
 
             on_change(Limits(bottom=bottom, top=top))
@@ -378,13 +406,17 @@ class SettingsDialog(QDialog):
             else:
                 top_editor.clear()
 
+        current = getattr(config, field)
+        if not config.is_default(field):
+            bottom_editor.setText(formatter(current["bottom"]))
+            top_editor.setText(formatter(current["top"]))
+
         bottom_editor.editingFinished.connect(commit_limit)
         top_editor.editingFinished.connect(commit_limit)
 
         if signal is not None:
             signal.connect(refresh_from_config)
 
-        refresh_from_config()
         form.addRow(label, row)
 
     def _build_general_tab(self):
@@ -412,7 +444,7 @@ class SettingsDialog(QDialog):
 
         self._add_optional_text_setting(
             form=form,
-            label="Name",
+            label="Name:",
             config=config,
             field="name",
             default=AxisConfig.name,
@@ -422,7 +454,7 @@ class SettingsDialog(QDialog):
 
         self._add_optional_text_setting(
             form=form,
-            label="Up command",
+            label="Up command:",
             config=config,
             field="up",
             default=AxisConfig.up,
@@ -432,7 +464,7 @@ class SettingsDialog(QDialog):
 
         self._add_optional_text_setting(
             form=form,
-            label="Down command",
+            label="Down command:",
             config=config,
             field="down",
             default=AxisConfig.down,
@@ -442,10 +474,11 @@ class SettingsDialog(QDialog):
 
         self._add_limit_setting(
             form=form,
-            label="Offset limits (V)",
+            label="Offset limits (V):",
             config=config,
             field="offset_lim",
             default=AxisConfig.offset_lim,
+            line_edit_validator=QDoubleValidator(self, bottom=0, top=150),
             parser=float,
             formatter=lambda value: f"{float(value):g}",
             on_change=lambda value: setattr(config, "offset_lim", value),
@@ -454,10 +487,11 @@ class SettingsDialog(QDialog):
 
         self._add_limit_setting(
             form=form,
-            label="Frequency limits (Hz)",
+            label="Frequency limits (Hz):",
             config=config,
             field="freq_lim",
             default=AxisConfig.freq_lim,
+            line_edit_validator=QIntValidator(self, bottom=0, top=10000),
             parser=int,
             formatter=lambda value: f"{int(value)}",
             on_change=lambda value: setattr(config, "freq_lim", value),
@@ -466,16 +500,17 @@ class SettingsDialog(QDialog):
 
         self._add_limit_setting(
             form=form,
-            label="Step voltage limits (V)",
+            label="Step voltage limits (V):",
             config=config,
             field="step_V_lim",
             default=AxisConfig.step_V_lim,
+            line_edit_validator=QDoubleValidator(self, bottom=0, top=150),
             parser=float,
             formatter=lambda value: f"{float(value):g}",
             on_change=lambda value: setattr(config, "step_V_lim", value),
             signal=config.signals.step_V_lim,  # ty:ignore[unresolved-attribute]
         )
-        
+
         def name_label(text: str | None):
             if text is None:
                 return f"Axis {aid}"
@@ -483,8 +518,9 @@ class SettingsDialog(QDialog):
                 return f"Axis {text}"
 
         index = self.tabs.addTab(tab, name_label(config.name))
-        
+
         @Slot()
         def name_change():
             self.tabs.setTabText(index, name_label(config.name))
+
         config.signals.name.connect(name_change)  # ty:ignore[unresolved-attribute]

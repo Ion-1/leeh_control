@@ -7,8 +7,8 @@ from PySide6.QtCore import Slot, Signal, Qt
 from PySide6.QtGui import QDoubleValidator
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QGroupBox, QLineEdit, QHBoxLayout, QPushButton
 
-from ..controller import ANC300
-from ..utils import rm_trailing_zeroes_float, ensure_acceptable_input, attach_validation_balloon
+from ...controller import ANC300
+from ..utils import rm_trailing_zeroes_float, acceptable_input_popup, attach_validation_balloon
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +118,7 @@ class OffsetWidget(QGroupBox):
 
     @Slot()
     def on_step_clicked(self, func: Callable[[float], float]):
-        if not ensure_acceptable_input(
+        if not acceptable_input_popup(
             self.line_edit,
             f"Enter a value between {self.bottom:g} and {self.top:g}.",
         ):
@@ -127,7 +127,7 @@ class OffsetWidget(QGroupBox):
 
     @Slot()
     def _emit_changed_if_valid(self):
-        if not ensure_acceptable_input(
+        if not acceptable_input_popup(
             self.line_edit,
             f"Enter a value between {self.bottom:g} and {self.top:g}.",
         ):

@@ -12,7 +12,6 @@ if __name__ == "__main__":
         "-c", "--config", type=str, default=None, help="Path to the config file (default: config.toml)"
     )
     parser.add_argument("--fake-backend", action="store_true", help="Use fake backend")
-    parser.add_argument("-h", "--help", action="help", help="Show this help message and exit")
     namespace = parser.parse_args(sys.argv[1:])
 
     logging.captureWarnings(True)

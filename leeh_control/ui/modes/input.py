@@ -3,8 +3,8 @@ import logging
 from PySide6.QtCore import Slot
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QGroupBox, QLabel
 
-from controller import ANC300
-from ui.utils import TwoOptionsRadioWidget
+from ...controller import ANC300
+from ..utils import TwoOptionsRadioGroupBox
 
 logger = logging.getLogger(__name__)
 
@@ -20,13 +20,13 @@ class InputModeWidget(QWidget):
 
         initial_state = self.controller.get_external_input_modes(self.aid)
 
-        self.ac_in = TwoOptionsRadioWidget(
+        self.ac_in = TwoOptionsRadioGroupBox(
             "AC-In", "Disabled", "Enabled", initial_state[0]
         )
         self.ac_in.toggled.connect(self.ac_in_toggled)
         layout.addWidget(self.ac_in)
 
-        self.dc_in = TwoOptionsRadioWidget(
+        self.dc_in = TwoOptionsRadioGroupBox(
             "DC-In", "Disabled", "Enabled", initial_state[1]
         )
         self.dc_in.toggled.connect(self.dc_in_toggled)

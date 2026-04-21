@@ -20,7 +20,7 @@ from .modes.input import InputModeWidget
 from .modes.off_and_step import ScanAndStepModeWidget
 from .modes.offset import OffsetModeWidget
 from .modes.step import SteppingModeWidget
-from .utils import ensure_acceptable_input, CurrentPageStackedWidget, AxisTitleLineEdit
+from .utils import acceptable_input_popup, CurrentPageStackedWidget, AxisTitleLineEdit
 from ..config import ConfigProvider
 from ..controller import ANC300
 
@@ -250,7 +250,7 @@ class ANM300Widget(QFrame):
     def _finish_label_editing(self):
         if self.label.isReadOnly():
             return
-        if not ensure_acceptable_input(
+        if not acceptable_input_popup(
             self.label,
             f"Axis name must be at most {self.AXIS_NAME_MAX_LENGTH} characters.",
         ):

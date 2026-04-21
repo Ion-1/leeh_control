@@ -5,10 +5,9 @@ from PySide6.QtCore import Slot, Signal, SignalInstance
 from PySide6.QtGui import QIntValidator, QDoubleValidator
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QGroupBox, QHBoxLayout, QLineEdit
 
-from config import Limits
-from controller import ANC300
-from ui.axis import logger
-from ui.utils import NumButton, rm_trailing_zeroes_float, ensure_acceptable_input, attach_validation_balloon
+from ...config import Limits
+from ...controller import ANC300
+from ..utils import NumButton, rm_trailing_zeroes_float, acceptable_input_popup, attach_validation_balloon
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +132,7 @@ class StepsWidget(QGroupBox):
 
     @Slot()
     def on_step_down(self):
-        if not ensure_acceptable_input(self.line_edit):
+        if not acceptable_input_popup(self.line_edit):
             return
         steps = self.converter(self.line_edit.text())
         assert 0 <= steps <= 10000
@@ -143,7 +142,7 @@ class StepsWidget(QGroupBox):
 
     @Slot()
     def on_step_up(self):
-        if not ensure_acceptable_input(self.line_edit):
+        if not acceptable_input_popup(self.line_edit):
             return
         steps = self.converter(self.line_edit.text())
         assert 0 <= steps <= 10000

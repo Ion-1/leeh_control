@@ -4,7 +4,7 @@ from typing import Callable
 
 from PySide6.QtCore import Qt, QSize, Signal, Slot, QSignalBlocker
 from PySide6.QtGui import QValidator, QIntValidator, QDoubleValidator
-from PySide6.QtWidgets import QLineEdit, QToolTip, QStackedWidget, QGroupBox, QHBoxLayout, QButtonGroup, QRadioButton, QPushButton
+from PySide6.QtWidgets import QLineEdit, QToolTip, QStackedWidget, QGroupBox, QHBoxLayout, QButtonGroup, QRadioButton, QPushButton, QWidget
 
 logger = logging.getLogger(__name__)
 
@@ -38,15 +38,11 @@ def tooltip_popup_with_focus(line_edit: QLineEdit, message: str):
     )
 
 
-def ensure_acceptable_input(line_edit: QLineEdit, message: str | None = None) -> bool:
-    validator = line_edit.validator()
-    if validator is None:
-        return True
-
+def acceptable_input_popup(line_edit: QLineEdit, message: str | None = None) -> bool:
     if line_edit.hasAcceptableInput():
         return True
 
-    tooltip_popup_with_focus(line_edit, message or _validator_error_message(validator))
+    tooltip_popup_with_focus(line_edit, message or _validator_error_message(line_edit.validator()))
     return False
 
 
@@ -92,7 +88,73 @@ class AxisTitleLineEdit(QLineEdit):
         super().mouseDoubleClickEvent(event)
 
 
-class TwoOptionsRadioWidget(QGroupBox):
+def _setup_two_option_controls(
+    parent: QWidget,
+    layout: QHBoxLayout,
+    false_text: str,
+    true_text: str,
+    initial: bool,
+    on_toggled: Callable[[bool], None],
+) -> tuple[QButtonGroup, QRadioButton, QRadioButton]:
+    button_group = QButtonGroup(parent)
+
+    false_button = QRadioButton(false_text)
+    button_group.addButton(false_button)
+    false_button.clicked.connect(lambda: on_toggled(False))
+    false_button.setChecked(not initial)
+    layout.addWidget(false_button)
+
+    true_button = QRadioButton(true_text)
+    button_group.addButton(true_button)
+    true_button.clicked.connect(lambda: on_toggled(True))
+    true_button.setChecked(initial)
+    layout.addWidget(true_button)
+
+    return button_group, false_button, true_button
+
+
+def _set_two_option_checked(
+    target: QWidget,
+    false_button: QRadioButton,
+    true_button: QRadioButton,
+    checked: bool,
+):
+    with QSignalBlocker(target):
+        false_button.setChecked(not checked)
+        true_button.setChecked(checked)
+
+
+class TwoOptionsRadioWidget(QWidget):
+    toggled = Signal(bool)
+
+    def __init__(
+        self,
+        false_text: str,
+        true_text: str,
+        initial: bool,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.button_group, self.false_button, self.true_button = _setup_two_option_controls(
+            self,
+            layout,
+            false_text,
+            true_text,
+            initial,
+            self.toggled.emit,
+        )
+        self.toggled.connect(self.true_button.setChecked)
+
+    def setChecked(self, checked: bool):
+        """Set the checked state w/o emitting the toggled signal."""
+        _set_two_option_checked(self, self.false_button, self.true_button, checked)
+
+
+class TwoOptionsRadioGroupBox(QGroupBox):
     toggled = Signal(bool)
 
     def __init__(
@@ -107,35 +169,19 @@ class TwoOptionsRadioWidget(QGroupBox):
         super().__init__(title, *args, **kwargs)
 
         layout = QHBoxLayout(self)
-
-        self.button_group = QButtonGroup()
-
-        self.false_button = QRadioButton(false_text)
-        self.button_group.addButton(self.false_button)
-        self.false_button.clicked.connect(self.emit_factory(False))
-        self.false_button.setChecked(not initial)
-        layout.addWidget(self.false_button)
-
-        self.true_button = QRadioButton(true_text)
-        self.button_group.addButton(self.true_button)
-        self.true_button.clicked.connect(self.emit_factory(True))
-        self.true_button.setChecked(initial)
-        layout.addWidget(self.true_button)
-
+        self.button_group, self.false_button, self.true_button = _setup_two_option_controls(
+            self,
+            layout,
+            false_text,
+            true_text,
+            initial,
+            self.toggled.emit,
+        )
         self.toggled.connect(self.true_button.setChecked)
-
-    def emit_factory(self, output: bool):
-        @Slot()
-        def emit_toggled():
-            self.toggled.emit(output)
-
-        return emit_toggled
 
     def setChecked(self, checked: bool):
         """Set the checked state w/o emitting the toggled signal."""
-        with QSignalBlocker(self):
-            self.false_button.setChecked(not checked)
-            self.true_button.setChecked(checked)
+        _set_two_option_checked(self, self.false_button, self.true_button, checked)
 
 
 class NumButton(QGroupBox):
@@ -143,7 +189,7 @@ class NumButton(QGroupBox):
 
     @Slot()
     def on_submit(self):
-        if not ensure_acceptable_input(self.num):
+        if not acceptable_input_popup(self.num):
             logger.error(
                 f"Invalid input {self.num.text()} for NumButton {self.title()}"
             )

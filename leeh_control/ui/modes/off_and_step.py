@@ -3,10 +3,10 @@ import logging
 from PySide6.QtCore import Slot
 from PySide6.QtWidgets import QWidget, QVBoxLayout
 
-from config import Limits
-from controller import ANC300
-from ui.modes.offset import OffsetModeWidget
-from ui.modes.step import SteppingModeWidget
+from ...config import Limits
+from ...controller import ANC300
+from .offset import OffsetModeWidget
+from .step import SteppingModeWidget
 
 logger = logging.getLogger(__name__)
 
