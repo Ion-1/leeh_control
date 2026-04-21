@@ -1,7 +1,7 @@
 import logging
 
+from pathlib import Path
 from functools import cache
-from itertools import zip_longest
 from typing import Optional
 
 from PySide6.QtCore import QFileSystemWatcher, Slot
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class App(QApplication):
-    def __init__(self, config_path: Optional[str] = None, show_fake: Optional[bool] = None, *args, **kwargs):
+    def __init__(self, config_path: Optional[Path] = None, show_fake: Optional[bool] = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         config_file, config = parse_config(config_path)

@@ -1,3 +1,4 @@
+from pathlib import Path
 import sys
 import logging
 import argparse
@@ -17,4 +18,12 @@ if __name__ == "__main__":
     logging.captureWarnings(True)
     logging.basicConfig(level=logging.DEBUG)
 
-    App(show_fake=namespace.fake_backend).exec()
+    if namespace.config is not None:
+        try:
+            config_path = Path(namespace.config).resolve()
+        except OSError as e:
+            parser.error(f"Invalid config path: {e}")
+    else:
+        config_path = None
+
+    App(show_fake=namespace.fake_backend, config_path=config_path).exec()

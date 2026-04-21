@@ -515,7 +515,7 @@ class SettingsDialog(QDialog):
             if text is None:
                 return f"Axis {aid}"
             else:
-                return f"Axis {text}"
+                return f"{text} axis"
 
         index = self.tabs.addTab(tab, name_label(config.name))
 
