@@ -31,8 +31,8 @@ class ConfigProvider(Protocol):
 
 
 class ConfigParseError(Enum):
-    ExistenceException = "Config file does not exist"
-    PermissionException = "Permission error while reading config file"
+    ExistenceError = "Config file does not exist"
+    PermissionError = "Permission error while reading config file"
     OSError = "OS error while reading config file"
     ParsingError = "Error while parsing config file"
 
@@ -40,12 +40,12 @@ class ConfigParseError(Enum):
 def _parse_config(config_file: Path) -> Result[TOMLDocument, ConfigParseError]:
     if not config_file.is_file():
         logger.error("Config file does not exist / is not a file")
-        return Result.Err(ConfigParseError.ExistenceException)
+        return Result.Err(ConfigParseError.ExistenceError)
     try:
         config_bytes = config_file.read_bytes()
     except PermissionError as e:
         logger.error(f"Permission error while reading config file: {e}")
-        return Result.Err(ConfigParseError.PermissionException)
+        return Result.Err(ConfigParseError.PermissionError)
     except OSError as e:
         logger.error(f"OS error while reading config file: {e}")
         return Result.Err(ConfigParseError.OSError)
@@ -87,7 +87,7 @@ def parse_config(config_path: Optional[str] | Path) -> tuple[Path | None, TOMLDo
     error = config.unwrap_err()
     logger.error("Error while getting config from fallback")
 
-    if error == ConfigParseError.ExistenceException:
+    if error == ConfigParseError.ExistenceError:
         logger.warning(
             "Attempting to write default config to fallback\nNOTE: If this is your first time running the app, this may be expected behavior"
         )
@@ -206,8 +206,9 @@ class BaseConfig(Signals):
         config = object.__getattribute__(self, "_config")
         return item not in config
 
-    def default(self, item: str) -> Any:
-        return object.__getattribute__(type(self), item)
+    @classmethod
+    def default(cls, item: str) -> Any:
+        return object.__getattribute__(cls, item)
 
     def __setattr__(self, name, value):
         if name.startswith("_"):

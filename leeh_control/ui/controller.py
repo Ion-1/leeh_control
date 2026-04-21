@@ -16,13 +16,12 @@ from PySide6.QtWidgets import (
     QToolButton,
     QDialog,
     QTabWidget,
-    QButtonGroup,
-    QRadioButton,
 )
 from pylablib.core.utils import py3
 from pylablib.devices.Attocube.anc300 import ANC300 as PLL_ANC300, AttocubeError
 
 from .axis import ANM300Widget
+from .utils import TwoOptionsRadioWidget
 from ..config import ConfigProvider, AxisConfig, Limits
 from ..controller import ANC300
 
@@ -279,50 +278,25 @@ class SettingsDialog(QDialog):
         on_change: Callable[[bool], None],
         signal: SignalInstance | None = None,
     ):
-        row = QWidget(self)
-        row_layout = QHBoxLayout(row)
-        row_layout.setContentsMargins(0, 0, 0, 0)
-
-        group = QButtonGroup(row)
-        disabled_button = QRadioButton("Disabled", row)
-        enabled_button = QRadioButton("Enabled", row)
-        group.addButton(disabled_button)
-        group.addButton(enabled_button)
+        row = TwoOptionsRadioWidget(
+            title="",
+            false_text="Disabled",
+            true_text="Enabled",
+            initial=bool(getattr(config, field)),
+            parent=self,
+        )
+        row.setFlat(True)
 
         @Slot()
         def refresh_from_config():
-            # Block button signals to avoid writing back while syncing from config.
-            blocker_disabled = QSignalBlocker(disabled_button)
-            blocker_enabled = QSignalBlocker(enabled_button)
-            value = bool(getattr(config, field))
-            if value:
-                enabled_button.setChecked(True)
-                disabled_button.setChecked(False)
-            else:
-                disabled_button.setChecked(True)
-                enabled_button.setChecked(False)
-            del blocker_disabled
-            del blocker_enabled
+            row.setChecked(bool(getattr(config, field)))
 
-        @Slot()
-        def on_enabled():
-            on_change(True)
-
-        @Slot()
-        def on_disabled():
-            on_change(False)
-
-        enabled_button.clicked.connect(on_enabled)
-        disabled_button.clicked.connect(on_disabled)
+        row.toggled.connect(on_change)
 
         if signal is not None:
             signal.connect(refresh_from_config)
 
         refresh_from_config()
-
-        row_layout.addWidget(disabled_button)
-        row_layout.addWidget(enabled_button)
-        row_layout.addStretch(1)
         form.addRow(label, row)
 
     def _add_limit_setting(
@@ -513,4 +487,4 @@ class SettingsDialog(QDialog):
         @Slot()
         def name_change():
             self.tabs.setTabText(index, name_label(config.name))
-        config.signals.name.connect(name_change)
+        config.signals.name.connect(name_change)  # ty:ignore[unresolved-attribute]

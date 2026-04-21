@@ -31,7 +31,7 @@ class App(QApplication):
         self.main_window.show()
 
     @Slot(str)
-    def on_config_changed(self, _path: str):
+    def on_config_changed(self, _path: str | None = None):
         logger.info("Config file changed, reloading...")
 
         old_config = self.state.config
