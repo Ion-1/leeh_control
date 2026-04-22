@@ -40,8 +40,8 @@ class ConsoleMessageItem(QListWidgetItem):
         super().__init__(self._render_text())
 
     def _render_text(self) -> str:
-        prefix = "> " if self.is_command else "< "
-        cont_prefix = " " * len(prefix)
+        prefix = ">>> " if self.is_command else "<<< "
+        cont_prefix = "... "
 
         lines = self.message_text.splitlines() or [""]
         rendered = [f"{prefix}{lines[0]}"]
