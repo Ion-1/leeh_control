@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class App(QApplication):
-    def __init__(self, config_path: Optional[Path] = None, show_fake: Optional[bool] = None, *args, **kwargs):
+    def __init__(self, config_path: Optional[Path] = None, show_fake: bool = False, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         config_file, config = parse_config(config_path)
@@ -60,7 +60,7 @@ class App(QApplication):
             logger.info(f"Emitting signal {key} for {serial}")
             if signal is not None and key not in emitted:
                 signal.emit()
-                emitted.add(key)
+                emitted.add((serial, key))
 
     @cache
     def general_config(self) -> GeneralConfig:

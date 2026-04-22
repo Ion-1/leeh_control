@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, state: AppState, config_provider: ConfigProvider, show_fake: Optional[bool] = None, *args, **kwargs):
+    def __init__(self, state: AppState, config_provider: ConfigProvider, show_fake: bool = False, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.app_state = state
@@ -62,7 +62,7 @@ class MainWindow(QMainWindow):
 class ChooseControllerWindow(QWidget):
     selection = Signal(ListPortInfo)
 
-    def __init__(self, show_fake: Optional[bool] = None, *args, **kwargs):
+    def __init__(self, show_fake: bool = False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
         layout = QVBoxLayout(self)
@@ -78,6 +78,7 @@ class ChooseControllerWindow(QWidget):
         drop_layout.addWidget(self.refresh_button)
         self.refresh_button.clicked.connect(self.refresh)
 
+        self.show_fake = show_fake
         ports = ANC300.list_ports(show_fake=show_fake)
 
         for port in ports:
@@ -89,7 +90,7 @@ class ChooseControllerWindow(QWidget):
 
     @Slot()
     def refresh(self):
-        ports = ANC300.list_ports()
+        ports = ANC300.list_ports(self.show_fake)
 
         self.dropdown.clear()
         for port in ports:

@@ -148,11 +148,6 @@ class OffsetWidget(QGroupBox):
             )
             if clipped != mod:
                 self.line_edit.inputRejected.emit()
-            print(
-                self.convert_to_str(clipped),
-                self.line_edit.text(),
-                self.convert_to_str(clipped) == self.line_edit.text(),
-            )
             if (clipped_str := self.convert_to_str(clipped)) == self.line_edit.text():
                 return
             self.line_edit.setText(clipped_str)
