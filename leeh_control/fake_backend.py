@@ -1,7 +1,5 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, Literal
 
 from pylablib.core.devio.comm_backend import IDeviceCommBackend
 from pylablib.core.utils import py3
@@ -17,7 +15,7 @@ class _AxisState:
     voltage_v: float = 30.0
     offset_v: float = 0.0
     frequency_hz: float = 1000.0
-    capacitance_nf: float = 60.0
+    capacitance_nf: float | Literal["?"] = "?"
     acin: bool = False
     dcin: bool = False
     output_v: float = 0.0
@@ -91,7 +89,9 @@ class FakeANC300Backend(IDeviceCommBackend):
                 data = data[: -len(term)]
         return self._to_datatype(data)
 
-    def read_multichar_term(self, term, remove_term=True, timeout=None, error_on_timeout=True):  # pylint: disable=unused-argument
+    def read_multichar_term(
+        self, term, remove_term=True, timeout=None, error_on_timeout=True
+    ):  # pylint: disable=unused-argument
         data = py3.as_builtin_bytes(self.read())
         if isinstance(term, py3.anystring):
             term = [term]
@@ -103,7 +103,9 @@ class FakeANC300Backend(IDeviceCommBackend):
                     break
         return self._to_datatype(data)
 
-    def write(self, data, flush=True, read_echo=False, read_echo_delay=0, read_echo_lines=1):  # pylint: disable=unused-argument
+    def write(
+        self, data, flush=True, read_echo=False, read_echo_delay=0, read_echo_lines=1
+    ):  # pylint: disable=unused-argument
         if isinstance(data, bytes):
             cmd = py3.as_str(data)
         else:
@@ -203,9 +205,14 @@ class FakeANC300Backend(IDeviceCommBackend):
 
             if op == "getc" and len(parts) == 2:
                 axis = self._one_axis(parts[1])
-                return f"capacitance = {self._axes[axis].capacitance_nf:.3f} nF", True
+                return "capacitance = " + (
+                    f"{self._axes[axis].capacitance_nf:.3f}"
+                    if self._axes[axis].capacitance_nf != "?"
+                    else "?"
+                ) + " nF", True
             if op == "capw" and len(parts) == 2:
                 axis = self._one_axis(parts[1])
+                self._axes[axis].capacitance_nf = 60
                 self._axes[axis].mode = "gnd"
                 return "", True
 
@@ -249,4 +256,3 @@ class FakeANC300Backend(IDeviceCommBackend):
             return f"unknown command: {cmd}", False
         except Exception as exc:
             return str(exc), False
-

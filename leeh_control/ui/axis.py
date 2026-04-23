@@ -381,7 +381,7 @@ class CapacitanceWidget(QWidget):
         layout = QHBoxLayout(self)
 
         self.label = QLabel(
-            f"Capacitance: {self.controller.get_capacitance(self.aid, measure=True) * 1e9:f} nF"
+            f"Capacitance: {self.controller.get_capacitance(self.aid, measure=False)} nF"
         )
         layout.addWidget(self.label)
 
@@ -391,12 +391,12 @@ class CapacitanceWidget(QWidget):
 
     def refresh(self):
         self.label.setText(
-            f"Capacitance: {self.controller.get_capacitance(self.aid, measure=False) * 1e9:f} nF"
+            f"Capacitance: {self.controller.get_capacitance(self.aid, measure=False)} nF"
         )
 
     @Slot()
     def measure(self):
         self.label.setText(
-            f"Capacitance: {self.controller.get_capacitance(self.aid, measure=True) * 1e9:f} nF"
+            f"Capacitance: {self.controller.get_capacitance(self.aid, measure=True)} nF"
         )
 

@@ -1,5 +1,6 @@
 import logging
-from typing import Any, Callable
+
+from typing import Any, Callable, Literal
 
 from PySide6.QtCore import Qt, Signal, Slot, QSignalBlocker, SignalInstance
 from PySide6.QtGui import QValidator, QDoubleValidator, QIntValidator
@@ -18,8 +19,6 @@ from PySide6.QtWidgets import (
     QDialog,
     QTabWidget,
 )
-from pylablib.core.utils import py3
-from pylablib.devices.Attocube.anc300 import ANC300 as PLL_ANC300, AttocubeError
 
 from .axis import ANM300Widget
 from .utils import (
@@ -48,19 +47,30 @@ class ConsoleMessageItem(QListWidgetItem):
         rendered.extend(f"{cont_prefix}{line}" for line in lines[1:])
         return "\n".join(rendered)
 
+    def render(self) -> str:
+        return self._render_text()
+
 
 class ANC300Widget(QWidget):
     def __init__(
-        self, controller: ANC300, config_provider: ConfigProvider, *args, **kwargs
+        self,
+        controller: ANC300,
+        config_provider: ConfigProvider,
+        messages: list[tuple[Literal[0, 1], str]],
+        *args,
+        **kwargs,
     ):
         super().__init__(*args, **kwargs)
 
         self.controller = controller
         self.config_provider = config_provider
         self.settings_dialog: SettingsDialog | None = None
-        self.console = ControllerConsoleWidget(self.controller)
+        self.console = ControllerConsoleWidget(messages)
+        self.console.send_query.connect(self.controller.query)
+        self.controller.add_query_callback(self.console.on_query_sent)
+        self.controller.add_reply_callback(self.console.on_reply_received)
 
-        self.axes = self.controller.axes
+        self.axes = self.controller.get_all_axes()
         self.axes_widgs = []
 
         bigger_layout = QHBoxLayout(self)
@@ -155,14 +165,10 @@ class ANC300Widget(QWidget):
 
 
 class ControllerConsoleWidget(QWidget):
-    command_sent = Signal(str)
-    reply_received = Signal(str)
+    send_query = Signal(str)
 
-    def __init__(self, controller: ANC300, *args, **kwargs):
+    def __init__(self, messages: list[tuple[Literal[0, 1], str]], *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-        controller.inner.query = self._query_patch(controller.inner)
-        self.controller = controller
 
         layout = QVBoxLayout(self)
 
@@ -175,8 +181,8 @@ class ControllerConsoleWidget(QWidget):
         self.input_widget.returnPressed.connect(self.send_command)
         layout.addWidget(self.input_widget)
 
-        self.command_sent.connect(self.on_command_sent)
-        self.reply_received.connect(self.on_reply_received)
+        for message_type, message in messages:
+            self.append(ConsoleMessageItem(text=message, is_command=message_type == 0))
 
     def append(self, item: ConsoleMessageItem):
         self.list_widget.addItem(item)
@@ -184,37 +190,16 @@ class ControllerConsoleWidget(QWidget):
 
     @Slot()
     def send_command(self):
-        self.controller.query_controller(self.input_widget.text())
+        self.send_query.emit(self.input_widget.text())
         self.input_widget.clear()
 
     @Slot(str)
-    def on_command_sent(self, msg: str):
+    def on_query_sent(self, msg: str):
         self.append(ConsoleMessageItem(text=msg, is_command=True))
 
     @Slot(str)
     def on_reply_received(self, reply: str):
         self.append(ConsoleMessageItem(text=reply, is_command=False))
-
-    def _query_patch(self, controller: PLL_ANC300):
-        """Copy-paste of the query method from the pylablib ANC300 class."""
-
-        def query(msg):
-            controller.instr.flush_read()
-            self.command_sent.emit(py3.as_str(msg))
-            logger.info(f"Sending command: {msg}")
-            controller.instr.write(msg)
-            reply = controller.instr.read_multichar_term(
-                ["ERROR", "OK"], remove_term=False
-            )
-            self.reply_received.emit(reply_text := py3.as_str(reply))
-            logger.info(f"Received reply: {reply_text}")
-            # self.instr.flush_read()
-            if reply_text.upper().endswith("ERROR"):
-                err = py3.as_str(reply_text)[:-5].strip()
-                raise AttocubeError(err)
-            return reply_text[:-2].strip()
-
-        return query
 
 
 class SettingsDialog(QDialog):
