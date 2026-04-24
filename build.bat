@@ -1,1 +1,0 @@
-uv run pyinstaller leeh_control_interface.spec
