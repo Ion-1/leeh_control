@@ -6,9 +6,13 @@ import argparse
 from leeh_control.app import App
 
 
-def configure_logging(verbose_count: int) -> None:
+def configure_logging(verbose_count: int, quiet: bool) -> None:
+    if quiet:
+        logging.disable(logging.CRITICAL)
+        return
+
     level = logging.WARNING
-    if verbose_count >= 2 or __debug__:
+    if verbose_count >= 2:
         level = logging.DEBUG
     elif verbose_count == 1:
         level = logging.INFO
@@ -27,12 +31,15 @@ if __name__ == "__main__":
         help="Increase verbosity (-v: INFO, -vv: DEBUG; default: WARNING)",
     )
     parser.add_argument(
+        "-q", "--quiet", action="store_true", help="Suppress all logging output on stderr (overrides --verbose)"
+    )
+    parser.add_argument(
         "-c", "--config", type=str, default=None, help="Path to the config file (default: config.toml)"
     )
     parser.add_argument("--fake-backend", action="store_true", help="Use fake backend")
     namespace = parser.parse_args(sys.argv[1:])
 
-    configure_logging(namespace.verbose)
+    configure_logging(namespace.verbose, namespace.quiet)
 
     if namespace.config is not None:
         try:
