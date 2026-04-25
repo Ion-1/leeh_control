@@ -21,7 +21,7 @@ def configure_logging(verbose_count: int, quiet: bool) -> None:
     logging.basicConfig(level=level, format="[%(asctime)s] [%(name)s/%(levelname)s]: %(message)s")
 
 
-if __name__ == "__main__":
+def build_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-v",
@@ -37,6 +37,11 @@ if __name__ == "__main__":
         "-c", "--config", type=str, default=None, help="Path to the config file (default: config.toml)"
     )
     parser.add_argument("--fake-backend", action="store_true", help="Use fake backend")
+    return parser
+
+
+if __name__ == "__main__":
+    parser = build_parser()
     namespace = parser.parse_args(sys.argv[1:])
 
     configure_logging(namespace.verbose, namespace.quiet)
