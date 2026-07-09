@@ -209,6 +209,10 @@ class ANC300(PLL_ANC300):
 
     @handle_errors
     def query(self, msg: str) -> str:
+        """
+        We override the query method to add logging and callbacks for queries and replies.
+        Needed for console functionality.
+        """
         self.instr.flush_read()
         self.query_callback(py3.as_str(msg))
         logger.info(render_command(msg, is_command=True))
@@ -265,6 +269,10 @@ class ANC300(PLL_ANC300):
 
     @handle_errors
     def get_capacitance(self, axis: int, measure: bool = False) -> float | Literal["?"]:
+        """
+        Get the capacitance of the specified axis. If measure is True, a new measurement will be performed and waited on.
+        We override this method since the base class errors on '?'.
+        """
         if measure:
             self._wip.measure_capacitance(axis,wait=True)
         reply=self.query("getc {}".format(axis))
