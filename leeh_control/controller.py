@@ -53,7 +53,7 @@ class QueryError:
 
 def list_ports(show_fake: bool = False) -> list[ListPortInfo]:
     ports: list[ListPortInfo] = lpo.comports()
-    if show_fake or __debug__:
+    if show_fake:
         fake_port = ListPortInfo(FAKE_ANC300_PORT)
         fake_port.description = "Simulated ANC300 controller"
         ports.append(fake_port)
