@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QToolButton,
     QDialog,
     QTabWidget,
+    QSplitter,
 )
 
 from .axis import ANM300Widget
@@ -74,11 +75,25 @@ class ANC300Widget(QWidget):
         self.axes_widgs = []
 
         bigger_layout = QHBoxLayout(self)
-        layout = QVBoxLayout()
-        bigger_layout.addLayout(layout)
 
-        bigger_layout.addWidget(self.console)
+        self.splitter = QSplitter(Qt.Orientation.Horizontal, self)
+
+        # left container holds the existing vertical layout
+        left_container = QWidget(self)
+        layout = QVBoxLayout(left_container)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.splitter.addWidget(left_container)
+        self.splitter.addWidget(self.console)
+        self.splitter.setCollapsible(0, False)
+        self.splitter.setCollapsible(1, False)
+        self.splitter.setHandleWidth(1)
+
         self.console.hide()
+
+        self.splitter.handle(1).hide()
+
+        bigger_layout.addWidget(self.splitter)
 
         top_bar = QHBoxLayout()
 
@@ -152,10 +167,14 @@ class ANC300Widget(QWidget):
             self.show_console.setArrowType(Qt.ArrowType.RightArrow)
             self.show_console.setText("Hide Console")
             self.console.show()
+
+            self.splitter.handle(1).show()
         else:
             self.show_console.setArrowType(Qt.ArrowType.DownArrow)
             self.show_console.setText("Show Console")
             self.console.hide()
+
+            self.splitter.handle(1).hide()
 
     @Slot()
     def refresh(self):
