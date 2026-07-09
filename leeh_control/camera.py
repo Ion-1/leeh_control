@@ -1,3 +1,4 @@
+import os
 import logging
 
 import numpy as np
@@ -46,12 +47,7 @@ class CameraWidget(QWidget):
         save_location = QFileDialog.getSaveFileName(self, "Save Image", "", "Image Files (*.png *.jpg)")
 
         if not save_location[0]:
-            im.show()
             QErrorMessage(self).showMessage("No file selected; image not saved.")
         else:
             im.save(save_location[0])
-            for viewer in ImageShow._viewers:
-                if viewer.show_file(save_location[0]):
-                    break
-            else:
-                logger.error("Failed to open image in a viewer.")
+            os.startfile(save_location[0], "open")
