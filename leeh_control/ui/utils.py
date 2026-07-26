@@ -1,6 +1,6 @@
 import logging
 
-from typing import Callable
+from typing import Callable, Protocol
 
 from PySide6.QtCore import Qt, QSize, Signal, Slot, QSignalBlocker
 from PySide6.QtGui import QValidator, QIntValidator, QDoubleValidator
@@ -213,3 +213,8 @@ class NumButton(QGroupBox):
 
     def setText(self, text: str):
         self.num.setText(text)
+
+
+class Printable(Protocol):
+    def __str__(self) -> str:
+        ...

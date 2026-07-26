@@ -54,4 +54,4 @@ if __name__ == "__main__":
     else:
         config_path = None
 
-    App(show_fake=namespace.fake_backend, config_path=config_path).exec()
+    App(show_fake=namespace.fake_backend or __debug__, config_path=config_path).exec()

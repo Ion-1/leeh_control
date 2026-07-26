@@ -13,6 +13,7 @@ dependencies = [
     "pyside6>=6.11.0",
     "rust-enum",
     "tomlkit>=0.14.0",
+    "zarr>=3.2.1",
 ]
 
 [dependency-groups]

@@ -18,6 +18,7 @@ from serial.tools.list_ports_common import ListPortInfo
 
 from .controller import ANC300Widget
 from ..camera import CameraWidget
+from ..fake_camera import FakeDCAMCamera
 from ..config import ConfigProvider
 from ..controller import ANC300, COMConnectionOptions
 from ..state import ControllerState, AppState
@@ -35,8 +36,6 @@ class MainWindow(QMainWindow):
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-
-        show_fake = show_fake or __debug__
 
         self.app_state = state
         self.config_provider = config_provider
@@ -115,7 +114,8 @@ class MainWindow(QMainWindow):
             return
 
         if selected_camera == -1:
-            self.camera_widget = CameraWidget(None)
+            cam = FakeDCAMCamera()
+            self.camera_widget = CameraWidget(cam)  # ty:ignore[invalid-argument-type]
             self.camera_widget.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
             new_window = QMainWindow()
             new_window.setWindowTitle("Camera")
@@ -124,6 +124,7 @@ class MainWindow(QMainWindow):
             new_window.show()
             self.open_camera_window = new_window
             self.open_camera_window.destroyed.connect(lambda: setattr(self, "open_camera_window", None))
+            self.camera_widget.destroyed.connect(cam.close)
             return
 
         try:
@@ -150,7 +151,7 @@ class MainWindow(QMainWindow):
 
 def get_cam_numbers():
     try:
-        return DCAM.get_cameras_number()
+        return list(range(DCAM.get_cameras_number()))
     except OSError as e:
         logger.error(f"DCAM API DLL not available: {e}")
         return []
